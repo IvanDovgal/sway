@@ -172,6 +172,7 @@ struct sway_xwayland_unmanaged {
 
 	struct wlr_scene_surface *surface_scene;
 
+	struct wl_listener focus_in;
 	struct wl_listener request_activate;
 	struct wl_listener request_configure;
 	struct wl_listener request_fullscreen;

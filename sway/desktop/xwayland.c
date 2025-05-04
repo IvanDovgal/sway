@@ -35,6 +35,45 @@ static const char *atom_map[ATOM_LAST] = {
 	[NET_WM_STATE_MODAL] = "_NET_WM_STATE_MODAL",
 };
 
+static void try_local_focus(struct wlr_xwayland_surface *xsurface) {
+	struct sway_seat *seat = input_manager_current_seat();
+	struct sway_container *focus = seat_get_focused_container(seat);
+	if (focus && focus->view && focus->view->pid != xsurface->pid) {
+		return;
+	}
+	struct wlr_xwayland *xwayland = server.xwayland.wlr_xwayland;
+	wlr_xwayland_set_seat(xwayland, seat->wlr_seat);
+	seat_set_focus_surface(seat, xsurface->surface, false);
+}
+
+static void set_unmanaged_focus(struct wlr_xwayland_surface *xsurface) {
+	enum wlr_xwayland_icccm_input_model input_model = wlr_xwayland_surface_icccm_input_model(xsurface);
+	switch (input_model) {
+		case WLR_ICCCM_INPUT_MODEL_PASSIVE:
+		case WLR_ICCCM_INPUT_MODEL_LOCAL:
+			try_local_focus(xsurface);
+			break;
+		case WLR_ICCCM_INPUT_MODEL_GLOBAL:
+			wlr_xwayland_surface_offer_focus(xsurface);
+			break;
+		default: ;
+		case WLR_ICCCM_INPUT_MODEL_NONE:
+			break;
+	}
+}
+
+static void unmanaged_handle_focus_in(struct wl_listener *listener,
+		void *data) {
+	struct sway_xwayland_unmanaged *surface =
+		wl_container_of(listener, surface, focus_in);
+	struct wlr_xwayland_surface *xsurface = surface->wlr_xwayland_surface;
+
+	if (xsurface->surface == NULL || !xsurface->surface->mapped) {
+		return;
+	}
+	try_local_focus(xsurface);
+}
+
 static void unmanaged_handle_request_configure(struct wl_listener *listener,
 		void *data) {
 	struct sway_xwayland_unmanaged *surface =
@@ -72,10 +111,7 @@ static void unmanaged_handle_map(struct wl_listener *listener, void *data) {
 	}
 
 	if (wlr_xwayland_surface_override_redirect_wants_focus(xsurface)) {
-		struct sway_seat *seat = input_manager_current_seat();
-		struct wlr_xwayland *xwayland = server.xwayland.wlr_xwayland;
-		wlr_xwayland_set_seat(xwayland, seat->wlr_seat);
-		seat_set_focus_surface(seat, xsurface->surface, false);
+		set_unmanaged_focus(xsurface);
 	}
 }
 
@@ -118,13 +154,7 @@ static void unmanaged_handle_request_activate(struct wl_listener *listener, void
 	if (xsurface->surface == NULL || !xsurface->surface->mapped) {
 		return;
 	}
-	struct sway_seat *seat = input_manager_current_seat();
-	struct sway_container *focus = seat_get_focused_container(seat);
-	if (focus && focus->view && focus->view->pid != xsurface->pid) {
-		return;
-	}
-
-	seat_set_focus_surface(seat, xsurface->surface, false);
+	set_unmanaged_focus(xsurface);
 }
 
 static void unmanaged_handle_associate(struct wl_listener *listener, void *data) {
@@ -153,6 +183,7 @@ static void unmanaged_handle_destroy(struct wl_listener *listener, void *data) {
 	wl_list_remove(&surface->destroy.link);
 	wl_list_remove(&surface->override_redirect.link);
 	wl_list_remove(&surface->request_activate.link);
+	wl_list_remove(&surface->focus_in.link);
 	free(surface);
 }
 
@@ -197,6 +228,10 @@ static struct sway_xwayland_unmanaged *create_unmanaged(
 	}
 
 	surface->wlr_xwayland_surface = xsurface;
+
+	wl_signal_add(&xsurface->events.focus_in,
+	&surface->focus_in);
+	surface->focus_in.notify = unmanaged_handle_focus_in;
 
 	wl_signal_add(&xsurface->events.request_configure,
 		&surface->request_configure);
