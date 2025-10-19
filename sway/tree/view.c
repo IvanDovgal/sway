@@ -49,6 +49,11 @@ bool view_init(struct sway_view *view, enum sway_view_type type,
 		failed = true;
 	}
 
+	view->image_capture_scene = wlr_scene_create();
+	if (view->image_capture_scene == NULL) {
+		failed = true;
+	}
+
 	if (failed) {
 		wlr_scene_node_destroy(&view->scene_tree->node);
 		return false;
@@ -81,6 +86,7 @@ void view_destroy(struct sway_view *view) {
 	list_free(view->executed_criteria);
 
 	view_assign_ctx(view, NULL);
+	wlr_scene_node_destroy(&view->image_capture_scene->tree.node);
 	wlr_scene_node_destroy(&view->scene_tree->node);
 	if (view->impl->destroy) {
 		view->impl->destroy(view);
@@ -182,6 +188,13 @@ const char *view_get_sandbox_instance_id(struct sway_view *view) {
 	const struct wlr_security_context_v1_state *security_context =
 		security_context_from_view(view);
 	return security_context ? security_context->instance_id : NULL;
+}
+
+const char *view_get_tag(struct sway_view *view) {
+	if (view->impl->get_string_prop) {
+		return view->impl->get_string_prop(view, VIEW_PROP_TAG);
+	}
+	return NULL;
 }
 
 const char *view_get_shell(struct sway_view *view) {
@@ -517,10 +530,12 @@ void view_execute_criteria(struct sway_view *view) {
 		sway_log(SWAY_DEBUG, "for_window '%s' matches view %p, cmd: '%s'",
 				criteria->raw, view, criteria->cmdlist);
 		list_add(view->executed_criteria, criteria);
-		list_t *res_list = execute_command(
-				criteria->cmdlist, NULL, view->container);
+		list_t *res_list = execute_command(criteria->cmdlist, NULL, view->container);
 		while (res_list->length) {
 			struct cmd_results *res = res_list->items[0];
+			if (res->status != CMD_SUCCESS) {
+				sway_log(SWAY_ERROR, "for_window '%s' failed: %s", criteria->raw, res->error);
+			}
 			free_cmd_results(res);
 			list_del(res_list, 0);
 		}
@@ -813,6 +828,7 @@ void view_map(struct sway_view *view, struct wlr_surface *wlr_surface,
 	};
 	view->ext_foreign_toplevel =
 		wlr_ext_foreign_toplevel_handle_v1_create(server.foreign_toplevel_list, &foreign_toplevel_state);
+	view->ext_foreign_toplevel->data = view;
 
 	view->foreign_toplevel =
 		wlr_foreign_toplevel_handle_v1_create(server.foreign_toplevel_manager);
@@ -1190,6 +1206,10 @@ static void view_save_buffer_iterator(struct wlr_scene_buffer *buffer,
 	wlr_scene_buffer_set_dest_size(sbuf,
 		buffer->dst_width, buffer->dst_height);
 	wlr_scene_buffer_set_opaque_region(sbuf, &buffer->opaque_region);
+	wlr_scene_buffer_set_opacity(sbuf, buffer->opacity);
+	wlr_scene_buffer_set_filter_mode(sbuf, buffer->filter_mode);
+	wlr_scene_buffer_set_transfer_function(sbuf, buffer->transfer_function);
+	wlr_scene_buffer_set_primaries(sbuf, buffer->primaries);
 	wlr_scene_buffer_set_source_box(sbuf, &buffer->src_box);
 	wlr_scene_node_set_position(&sbuf->node, sx, sy);
 	wlr_scene_buffer_set_transform(sbuf, buffer->transform);
@@ -1240,7 +1260,11 @@ bool view_can_tear(struct sway_view *view) {
 static void send_frame_done_iterator(struct wlr_scene_buffer *scene_buffer,
 		int x, int y, void *data) {
 	struct timespec *when = data;
-	wl_signal_emit_mutable(&scene_buffer->events.frame_done, when);
+	struct wlr_scene_surface *scene_surface = wlr_scene_surface_try_from_buffer(scene_buffer);
+	if (scene_surface == NULL) {
+		return;
+	}
+	wlr_surface_send_frame_done(scene_surface->surface, when);
 }
 
 void view_send_frame_done(struct sway_view *view) {

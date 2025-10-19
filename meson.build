@@ -1,13 +1,14 @@
 project(
 	'sway',
 	'c',
-	version: '1.11-rc2',
+	version: '1.12-dev',
 	license: 'MIT',
 	meson_version: '>=1.3',
 	default_options: [
 		'c_std=c11',
 		'warning_level=2',
 		'werror=true',
+		'wrap_mode=nodownload',
 	],
 )
 
@@ -38,14 +39,14 @@ if is_freebsd
 endif
 
 # Execute the wlroots subproject, if any
-wlroots_version = ['>=0.19.0', '<0.20.0']
+wlroots_version = ['>=0.20.0', '<0.21.0']
 subproject(
 	'wlroots',
 	default_options: ['examples=false'],
 	required: false,
 	version: wlroots_version,
 )
-wlroots = dependency('wlroots-0.19', version: wlroots_version, fallback: 'wlroots')
+wlroots = dependency('wlroots-0.20', version: wlroots_version, fallback: 'wlroots')
 wlroots_features = {
 	'xwayland': false,
 	'libinput_backend': false,
@@ -64,7 +65,7 @@ pcre2 = dependency('libpcre2-8')
 wayland_server = dependency('wayland-server', version: '>=1.21.0')
 wayland_client = dependency('wayland-client')
 wayland_cursor = dependency('wayland-cursor')
-wayland_protos = dependency('wayland-protocols', version: '>=1.24', default_options: ['tests=false'])
+wayland_protos = dependency('wayland-protocols', version: '>=1.41', default_options: ['tests=false'])
 xkbcommon = dependency('xkbcommon', version: '>=1.5.0')
 cairo = dependency('cairo')
 pango = dependency('pango')

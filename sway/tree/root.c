@@ -199,6 +199,8 @@ void root_scratchpad_show(struct sway_container *con) {
 	if (old_ws) {
 		workspace_consider_destroy(old_ws);
 	}
+
+	container_raise_floating(con);
 }
 
 static void disable_fullscreen(struct sway_container *con, void *data) {
@@ -212,9 +214,7 @@ void root_scratchpad_hide(struct sway_container *con) {
 	struct sway_node *focus = seat_get_focus_inactive(seat, &root->node);
 	struct sway_workspace *ws = con->pending.workspace;
 
-	if (con->pending.fullscreen_mode == FULLSCREEN_GLOBAL && !con->pending.workspace) {
-		// If the container was made fullscreen global while in the scratchpad,
-		// it should be shown until fullscreen has been disabled
+	if (!con->pending.workspace) {
 		return;
 	}
 

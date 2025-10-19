@@ -166,8 +166,8 @@ void workspace_begin_destroy(struct sway_workspace *workspace) {
 	if (workspace->output) {
 		workspace_detach(workspace);
 	}
-	workspace->node.destroying = true;
 	node_set_dirty(&workspace->node);
+	workspace->node.destroying = true;
 }
 
 void workspace_consider_destroy(struct sway_workspace *ws) {
@@ -659,13 +659,9 @@ void workspace_output_add_priority(struct sway_workspace *workspace,
 }
 
 struct sway_output *workspace_output_get_highest_available(
-		struct sway_workspace *ws, struct sway_output *exclude) {
+		struct sway_workspace *ws) {
 	for (int i = 0; i < ws->output_priority->length; i++) {
 		const char *name = ws->output_priority->items[i];
-		if (exclude && output_match_name_or_id(exclude, name)) {
-			continue;
-		}
-
 		struct sway_output *output = output_by_name_or_id(name);
 		if (output) {
 			return output;
